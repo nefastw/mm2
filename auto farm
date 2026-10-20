@@ -1,0 +1,222 @@
+local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+
+-- Reatualizar o HumanoidRootPart se o personagem renascer (respawn)
+player.CharacterAdded:Connect(function(newChar)
+    character = newChar
+    humanoidRootPart = newChar:WaitForChild("HumanoidRootPart")
+end)
+
+-- Estado do Script
+local estaRodando = false
+local emPausa = false
+local velocidade = 23 -- Valor padrão
+local coinsVisitadas = {}
+local tweenAtual = nil
+
+---------------------------------------------------------
+-- CRIAÇÃO DA INTERFACE GRÁFICA (GUI)
+---------------------------------------------------------
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "CoinCollectorGui"
+screenGui.ResetOnSpawn = false
+
+local playerGui = player:WaitForChild("PlayerGui")
+screenGui.Parent = playerGui
+
+-- Frame Principal
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 220, 0, 180)
+mainFrame.Position = UDim2.new(0.05, 0, 0.3, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
+
+local uiCorner = Instance.new("UICorner")
+uiCorner.CornerRadius = UDim.new(0, 10)
+uiCorner.Parent = mainFrame
+
+-- Título
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, 0, 0, 35)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "Nefasto's Candy Farm Inteligente"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextSize = 14
+titleLabel.Font = Enum.Font.SourceSansBold
+titleLabel.Parent = mainFrame
+
+-- Campo de Texto para Velocidade
+local speedBox = Instance.new("TextBox")
+speedBox.Size = UDim2.new(0.85, 0, 0, 30)
+speedBox.Position = UDim2.new(0.075, 0, 0.22, 0)
+speedBox.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+speedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+speedBox.Text = tostring(velocidade)
+speedBox.PlaceholderText = "Velocidade (ex: 27)"
+speedBox.Font = Enum.Font.SourceSans
+speedBox.TextSize = 14
+speedBox.Parent = mainFrame
+
+local speedCorner = Instance.new("UICorner")
+speedCorner.CornerRadius = UDim.new(0, 6)
+speedCorner.Parent = speedBox
+
+-- Botão Iniciar / Parar
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0.85, 0, 0, 35)
+toggleBtn.Position = UDim2.new(0.075, 0, 0.45, 0)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBtn.Text = "INICIAR"
+toggleBtn.Font = Enum.Font.SourceSansBold
+toggleBtn.TextSize = 15
+toggleBtn.Parent = mainFrame
+
+local btnCorner1 = Instance.new("UICorner")
+btnCorner1.CornerRadius = UDim.new(0, 6)
+btnCorner1.Parent = toggleBtn
+
+-- Botão Pausar / Continuar
+local pauseBtn = Instance.new("TextButton")
+pauseBtn.Size = UDim2.new(0.85, 0, 0, 35)
+pauseBtn.Position = UDim2.new(0.075, 0, 0.70, 0)
+pauseBtn.BackgroundColor3 = Color3.fromRGB(241, 196, 15)
+pauseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+pauseBtn.Text = "PAUSAR"
+pauseBtn.Font = Enum.Font.SourceSansBold
+pauseBtn.TextSize = 15
+pauseBtn.Visible = false
+pauseBtn.Parent = mainFrame
+
+local btnCorner2 = Instance.new("UICorner")
+btnCorner2.CornerRadius = UDim.new(0, 6)
+btnCorner2.Parent = pauseBtn
+
+---------------------------------------------------------
+-- LÓGICA DE BUSCA PELA MOEDA MAIS PRÓXIMA
+---------------------------------------------------------
+local function obterCoinMaisProxima()
+    local menorDistancia = math.huge
+    local coinMaisProxima = nil
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj.Name == "Coin_Server" and obj:IsA("BasePart") and not coinsVisitadas[obj] then
+            local distancia = (humanoidRootPart.Position - obj.Position).Magnitude
+            if distancia < menorDistancia then
+                menorDistancia = distancia
+                coinMaisProxima = obj
+            end
+        end
+    end
+
+    return coinMaisProxima, menorDistancia
+end
+
+local function irParaProximaCoin()
+    if not estaRodando then return end
+
+    -- Se estiver pausado, aguarda até despausar
+    while emPausa and estaRodando do
+        task.wait(0.2)
+    end
+
+    if not estaRodando then return end
+
+    -- Busca especificamente a Coin_Server mais próxima da posição atual
+    local proximaCoin, distancia = obterCoinMaisProxima()
+
+    if proximaCoin then
+        coinsVisitadas[proximaCoin] = true
+
+        local tempoDeMovimento = distancia / velocidade
+
+        local tweenInfo = TweenInfo.new(
+            tempoDeMovimento,
+            Enum.EasingStyle.Linear
+        )
+
+        local goal = { CFrame = proximaCoin.CFrame }
+        tweenAtual = TweenService:Create(humanoidRootPart, tweenInfo, goal)
+        tweenAtual:Play()
+
+        -- Aguarda o tween terminar
+        local state = tweenAtual.Completed:Wait()
+
+        if state == Enum.PlaybackState.Cancelled then
+            return
+        end
+
+        print("Chegou na Coin_Server mais próxima!")
+        
+        -- Chama novamente para recalcular qual é a mais próxima agora
+        irParaProximaCoin()
+    else
+        print("Todas as Coin_Server foram coletadas!")
+        estaRodando = false
+        toggleBtn.Text = "INICIAR"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+        pauseBtn.Visible = false
+    end
+end
+
+---------------------------------------------------------
+-- CONEXÕES DA GUI
+---------------------------------------------------------
+speedBox:GetPropertyChangedSignal("Text"):Connect(function()
+    local val = tonumber(speedBox.Text)
+    if val and val > 0 then
+        velocidade = val
+    end
+end)
+
+toggleBtn.MouseButton1Click:Connect(function()
+    estaRodando = not estaRodando
+
+    if estaRodando then
+        toggleBtn.Text = "PARAR"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
+        pauseBtn.Visible = true
+        pauseBtn.Text = "PAUSAR"
+        emPausa = false
+        
+        table.clear(coinsVisitadas)
+        task.spawn(irParaProximaCoin)
+    else
+        toggleBtn.Text = "INICIAR"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+        pauseBtn.Visible = false
+        emPausa = false
+        
+        if tweenAtual then
+            tweenAtual:Cancel()
+        end
+    end
+end)
+
+pauseBtn.MouseButton1Click:Connect(function()
+    if not estaRodando then return end
+
+    emPausa = not emPausa
+
+    if emPausa then
+        pauseBtn.Text = "CONTINUAR"
+        pauseBtn.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
+        if tweenAtual then
+            tweenAtual:Pause()
+        end
+    else
+        pauseBtn.Text = "PAUSAR"
+        pauseBtn.BackgroundColor3 = Color3.fromRGB(241, 196, 15)
+        if tweenAtual then
+            tweenAtual:Resume()
+        end
+    end
+end)
